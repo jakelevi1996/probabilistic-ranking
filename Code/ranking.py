@@ -1,6 +1,5 @@
 import numpy as np
 from scipy.linalg import cholesky, solve_triangular as solve
-from data.fileio import load
 from time import time
 
 def gibbs_rank(games, num_players, num_steps=1100, print_every=None):
@@ -54,12 +53,11 @@ def gibbs_rank(games, num_players, num_steps=1100, print_every=None):
         skills_history[:, step] = skills.reshape(-1)
 
     mean_skills = skills_history.mean(axis=1)
-    return skills_history, mean_skills
+    std_skills = skills_history.std(axis=1)
+    return skills_history, mean_skills, std_skills
 
 if __name__ == "__main__":
     # np.random.seed(27)
-    games, names = load()
-    num_players = names.size
     
     # games = np.array([
     #     [0, 1],
@@ -73,26 +71,35 @@ if __name__ == "__main__":
     #     [1, 3]
     # ])
     
-    # games = np.array([
-    #     [0, 1],
-    #     [1, 2],
-    #     [2, 3],
-    #     [3, 4],
-    #     [4, 5],
-    #     [0, 2],
-    #     [0, 3],
-    #     [0, 4],
-    #     [0, 4],
-    # ])
-    # num_players = games.max() +1
+    games = np.array([
+        [0, 1],
+        [1, 2],
+        [2, 3],
+        [2, 3],
+        [2, 3],
+        [2, 3],
+        [2, 3],
+        [2, 3],
+        [3, 4],
+        [4, 5],
+        [0, 2],
+        [0, 3],
+        [0, 4],
+        [0, 4],
+    ])
+    num_players = games.max() +1
 
-    num_steps = 1100
+    num_steps = 2000
     print("Ranking {} games between {} players".format(
         games.shape[0], num_players
     ))
     start_time = time()
-    skills_history, mean_skills = gibbs_rank(games, num_players, num_steps)
+    skills_history, mean_skills, std_skills = gibbs_rank(
+        games, num_players, num_steps
+    )
     print("Time taken for {} steps = {:.3f} s".format(
         num_steps, time() - start_time
     ))
-    print(mean_skills)
+    print(np.concatenate(
+        [mean_skills.reshape(-1, 1), std_skills.reshape(-1, 1)], axis=1)
+    )
