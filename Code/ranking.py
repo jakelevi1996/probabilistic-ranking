@@ -72,19 +72,34 @@ def ep_rank(games, num_players, num_steps=5):
     # Initialise prior variance of skills
     prior_skills_variance = 0.5
     # Initialise game to skill messages
-    game_to_skill_means = np.zeros([num_games, 2])
-    game_to_skill_precs = np.zeros([num_games, 2])
+    game_to_skill_means = np.zeros(games.shape)
+    game_to_skill_precs = np.zeros(games.shape)
     for step in range(num_steps):
         print("Step = {}".format(step))
-        # Step 1: compute marginal skills:
+        # Step 1: compute marginal skills per player:
         skill_precs = 1.0 / prior_skills_variance + (np.where(
             games.reshape(-1, 1) == np.arange(num_players),
             game_to_skill_precs.reshape(-1, 1), 0
-        )).sum(axis=0).reshape(-1, 1)
+        )).sum(axis=0).reshape(num_players, 1)
         skill_means = 1.0 / skill_precs * (np.where(
             games.reshape(-1, 1) == np.arange(num_players),
             (game_to_skill_precs * game_to_skill_means).reshape(-1, 1), 0
-        )).sum(axis=0).reshape(-1, 1)
+        )).sum(axis=0).reshape(num_players, 1)
+        print(
+            "Skill marginals per player:\n",
+            np.concatenate([skill_means, skill_precs], axis=1)
+        )
+        # Step 2: compute skill to game messages per game:
+        skill_to_game_precs = skill_precs[games].reshape(
+            games.shape
+        ) - game_to_skill_precs
+        skill_to_game_means = ((skill_precs * skill_means)[games].reshape(
+            games.shape
+        ) - (game_to_skill_precs * game_to_skill_means)) / skill_to_game_precs
+        print(
+            "Skill to game messages per game:\n",
+            np.concatenate([skill_to_game_means, skill_to_game_precs], axis=1)
+        )
 
 
 if __name__ == "__main__":
@@ -124,14 +139,14 @@ if __name__ == "__main__":
     print("Ranking {} games between {} players".format(
         games.shape[0], num_players
     ))
-    start_time = time()
-    skills_history, mean_skills, std_skills = gibbs_rank(
-        games, num_players, num_steps
-    )
-    print("Time taken for {} steps = {:.3f} s".format(
-        num_steps, time() - start_time
-    ))
-    print(np.concatenate(
-        [mean_skills.reshape(-1, 1), std_skills.reshape(-1, 1)], axis=1
-    ))
-    ep_rank(games, num_players, num_steps=5)
+    # start_time = time()
+    # skills_history, mean_skills, std_skills = gibbs_rank(
+    #     games, num_players, num_steps
+    # )
+    # print("Time taken for {} steps = {:.3f} s".format(
+    #     num_steps, time() - start_time
+    # ))
+    # print(np.concatenate(
+    #     [mean_skills.reshape(-1, 1), std_skills.reshape(-1, 1)], axis=1
+    # ))
+    ep_rank(games, num_players, num_steps=1)
