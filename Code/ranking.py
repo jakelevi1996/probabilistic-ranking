@@ -57,49 +57,91 @@ def gibbs_rank(games, num_players, num_steps=1100, print_every=None):
     std_skills = skills_history.std(axis=1)
     return skills_history, mean_skills, std_skills
 
+def compute_marginal_skills(
+    prior_skills_variance, games, num_players,
+    game_to_skill_means, game_to_skill_precs
+):
+    skill_precs = 1.0 / prior_skills_variance + (np.where(
+        games.reshape(-1, 1) == np.arange(num_players),
+        game_to_skill_precs.reshape(-1, 1), 0
+    )).sum(axis=0).reshape(num_players, 1)
+    skill_means = 1.0 / skill_precs * (np.where(
+        games.reshape(-1, 1) == np.arange(num_players),
+        (game_to_skill_precs * game_to_skill_means).reshape(-1, 1), 0
+    )).sum(axis=0).reshape(num_players, 1)
+    return skill_means, skill_precs
+
 def psi_func(x):
     return norm.pdf(x) / norm.cdf(x)
 
 def lambda_func(x):
     return psi_func(x) * (psi_func(x) + x)
 
-def ep_rank(games, num_players, num_steps=5):
+def ep_rank(games, num_players, num_steps=20, print_every=10):
     assert games.max() < num_players
     num_games = games.shape[0]
     # Initialise skills to prior mean (IE zero, by symmetry)
-    skills = np.zeros([num_players, 1])
-    skills_history = np.zeros([num_players, num_steps])
+    skill_means_history = np.zeros([num_players, num_steps])
+    skill_stds_history = np.zeros([num_players, num_steps])
     # Initialise prior variance of skills
     prior_skills_variance = 0.5
-    # Initialise game to skill messages
+    # Step 0: nitialise game to skill messages to uninformative prior:
     game_to_skill_means = np.zeros(games.shape)
     game_to_skill_precs = np.zeros(games.shape)
+    # Step 1: compute marginal skills per player:
+    skill_means, skill_precs = compute_marginal_skills(
+        prior_skills_variance, games, num_players,
+        game_to_skill_means, game_to_skill_precs
+    )
     for step in range(num_steps):
-        print("Step = {}".format(step))
-        # Step 1: compute marginal skills per player:
-        skill_precs = 1.0 / prior_skills_variance + (np.where(
-            games.reshape(-1, 1) == np.arange(num_players),
-            game_to_skill_precs.reshape(-1, 1), 0
-        )).sum(axis=0).reshape(num_players, 1)
-        skill_means = 1.0 / skill_precs * (np.where(
-            games.reshape(-1, 1) == np.arange(num_players),
-            (game_to_skill_precs * game_to_skill_means).reshape(-1, 1), 0
-        )).sum(axis=0).reshape(num_players, 1)
-        print(
-            "Skill marginals per player:\n",
-            np.concatenate([skill_means, skill_precs], axis=1)
-        )
+        if step % print_every == 0: print("Step = {}".format(step))
         # Step 2: compute skill to game messages per game:
-        skill_to_game_precs = skill_precs[games].reshape(
-            games.shape
+        skill_to_game_precs = (
+            skill_precs[games].reshape(games.shape)
         ) - game_to_skill_precs
-        skill_to_game_means = ((skill_precs * skill_means)[games].reshape(
-            games.shape
+        skill_to_game_means = ((
+            (skill_precs * skill_means)[games].reshape(games.shape)
         ) - (game_to_skill_precs * game_to_skill_means)) / skill_to_game_precs
-        print(
-            "Skill to game messages per game:\n",
-            np.concatenate([skill_to_game_means, skill_to_game_precs], axis=1)
+        # Step 3: compute game to performance messages per game:
+        game_to_perf_vars = (
+            1.0 + (1.0 / skill_to_game_precs).sum(axis=1)
+        ).reshape(num_games, 1)
+        game_to_perf_stds = np.sqrt(game_to_perf_vars)
+        game_to_perf_means = (
+            skill_to_game_means[:, 0] - skill_to_game_means[:, 1]
+        ).reshape(num_games, 1)
+        # Step 4: approximate the marginal performance differences per game:
+        perf_means = game_to_perf_means + game_to_perf_stds * psi_func(
+            game_to_perf_means / game_to_perf_stds
         )
+        perf_precs = 1.0 / (game_to_perf_vars * (1.0 - lambda_func(
+            game_to_perf_means / game_to_perf_stds
+        )))
+        # Step 5: compute performance to game messages per game:
+        perf_to_game_precs = perf_precs - 1.0 / game_to_perf_vars
+        perf_to_game_means = (
+            perf_means * perf_precs - game_to_perf_means / game_to_perf_vars
+        ) / perf_to_game_precs
+        # Step 6: compute game to skill messages per game
+        game_to_skill_precs = 1.0 / (
+            1.0 + np.tile(
+                1.0 / perf_to_game_precs, 2
+            ) + 1.0 / skill_to_game_precs[:, [1, 0]]
+        )
+        game_to_skill_means = np.append(
+            perf_to_game_means, -perf_to_game_means, axis=1
+        ) + skill_to_game_means[:, [1, 0]]
+        # Step 1: compute marginal skills per player:
+        skill_means, skill_precs = compute_marginal_skills(
+            prior_skills_variance, games, num_players,
+            game_to_skill_means, game_to_skill_precs
+        )
+        # Store the results:
+        skill_means_history[:, step] = skill_means.reshape(-1)
+        skill_stds_history[:, step] = 1.0 / np.sqrt(skill_precs).reshape(-1)
+    
+    return skill_means_history, skill_stds_history
+
 
 
 if __name__ == "__main__":
@@ -135,10 +177,10 @@ if __name__ == "__main__":
     ])
     num_players = games.max() +1
 
-    num_steps = 2000
-    print("Ranking {} games between {} players".format(
-        games.shape[0], num_players
-    ))
+    # num_steps = 2000
+    # print("Ranking {} games between {} players".format(
+    #     games.shape[0], num_players
+    # ))
     # start_time = time()
     # skills_history, mean_skills, std_skills = gibbs_rank(
     #     games, num_players, num_steps
@@ -149,4 +191,9 @@ if __name__ == "__main__":
     # print(np.concatenate(
     #     [mean_skills.reshape(-1, 1), std_skills.reshape(-1, 1)], axis=1
     # ))
-    ep_rank(games, num_players, num_steps=1)
+    skill_means_history, skill_stds_history = ep_rank(
+        games, num_players, num_steps=6
+    )
+    print(skill_means_history)
+    print(skill_stds_history)
+    print(skill_means_history[:, 1:] - skill_means_history[:, :-1])
