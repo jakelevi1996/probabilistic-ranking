@@ -9,7 +9,7 @@ def gibbs_rank(games, num_players, num_steps=1100, print_every=None):
     num_games = games.shape[0]
     # Initialise skills to prior mean (IE zero, by symmetry)
     skills = np.zeros([num_players, 1])
-    skills_history = np.zeros([num_players, num_steps])
+    skill_history = np.zeros([num_players, num_steps])
     # Initialise prior variance of skills
     prior_skills_var = 0.5
     for step in range(num_steps):
@@ -51,11 +51,11 @@ def gibbs_rank(games, num_players, num_steps=1100, print_every=None):
             lower=False, check_finite=False
         )
         # Store the results:
-        skills_history[:, step] = skills.reshape(-1)
+        skill_history[:, step] = skills.reshape(-1)
 
-    mean_skills = skills_history.mean(axis=1)
-    std_skills = skills_history.std(axis=1)
-    return skills_history, mean_skills, std_skills
+    skill_means = skill_history.mean(axis=1)
+    skill_stds = skill_history.std(axis=1)
+    return skill_history, skill_means, skill_stds
 
 def compute_marginal_skills(
     prior_skills_variance, games, num_players,
@@ -145,13 +145,25 @@ def ep_rank(games, num_players, num_steps=20, print_every=10):
     
     return skill_means_history, skill_stds_history
 
-def relative_gaussian_probability(mu_1, var_1, mu_2, var_2, noise_var=0):
-    return norm.cdf((mu_1 - mu_2) / (var_1 + var_2 + noise_var))
+def relative_gaussian_probability(mu_1, std_1, mu_2, std_2, noise_var=0):
+    """Probability that Gaussian RV 1 is greater than Gaussian RV 2, for a
+    particular observation
+    """
+    return norm.cdf(
+        mu_1 - mu_2,
+        scale=np.sqrt(pow(std_1, 2) + pow(std_2, 2) + noise_var)
+    )
 
-def relative_empirical_probability():
-    pass
+def relative_empirical_probability(player_1_samples, player_2_samples):
+    """Probability that player 1's variable is greater than player 2's
+    variable, given samples
+    """
+    player_1_wins = player_1_samples > player_2_samples
+    return player_1_wins.sum() / player_1_wins.size
 
-def ep_skill_table(final_mean_skills, final_std_skills, players=range(4)):
+def marginal_skill_table(
+    final_mean_skills, final_std_skills, players=range(4)
+):
     """Return table of probabilities of having a higher skill, according to EP
     predictions.
 
@@ -169,7 +181,7 @@ def ep_skill_table(final_mean_skills, final_std_skills, players=range(4)):
             )
     return table
 
-def ep_performance_table(
+def marginal_performance_table(
     final_mean_skills, final_std_skills, players=range(4)
 ):
     """Return table of probabilities of having a higher skill, according to EP
@@ -180,7 +192,7 @@ def ep_performance_table(
     Value in the table refers to probability that Player 1 has a higher skill
     than Player 2 (returned as an upper-triangular matrix with no diagonal)
 
-    TODO: This code is really similar to the `ep_skill_table` function; should
+    TODO: This code is really similar to the `marginal_skill_table` function; should
     probably have some better form of code reuse
     """
     table = np.zeros([len(players) - 1, len(players)])
@@ -193,11 +205,29 @@ def ep_performance_table(
             )
     return table
 
-def gibbs_marginal_skill_table():
-    pass
+def joint_skill_table(skill_samples, players=range(4)):
+    table = np.zeros([len(players) - 1, len(players)])
+    for i in range(table.shape[0]):
+        for j in range(i + 1, table.shape[1]):
+            table[i, j] = relative_empirical_probability(
+                skill_samples[players[i]], skill_samples[players[j]],
+            )
+    return table
 
-def gibbs_joint_skill_table():
-    pass
+def empirical_rank(games, num_players):
+    player_wins = (
+        games[:, 0].reshape(-1, 1) == np.arange(num_players)
+    ).sum(axis=0)
+    player_losses = (
+        games[:, 1].reshape(-1, 1) == np.arange(num_players)
+    ).sum(axis=0)
+    empirical_probabilities = player_wins / (player_wins + player_losses)
+    sorted_inds = np.argsort(empirical_probabilities)
+    return empirical_probabilities, sorted_inds
+
+def skill_rank(skill_means):
+    sorted_inds = np.argsort(skill_means)
+    return sorted_inds
 
 if __name__ == "__main__":
     # np.random.seed(27)
@@ -212,11 +242,11 @@ if __name__ == "__main__":
         [0, 3],
         [0, 4],
         [0, 4],
-        # [2, 3],
-        # [2, 3],
-        # [2, 3],
-        # [2, 3],
-        # [2, 3],
+        [2, 3],
+        [2, 3],
+        [2, 3],
+        [2, 3],
+        [2, 3],
         # [0, 17]
     ])
     num_players = games.max() +1
@@ -227,35 +257,47 @@ if __name__ == "__main__":
     ))
     start_time = time()
     # Do Gibbs sampling
-    skills_history, mean_skills, std_skills = gibbs_rank(
+    gibbs_skill_samples, gibbs_skill_means, gibbs_skill_stds = gibbs_rank(
         games, num_players, num_steps
     )
     print("Time taken for {} steps = {:.3f} s".format(
         num_steps, time() - start_time
     ))
     print("Gibbs results:\n", np.concatenate(
-        [mean_skills.reshape(-1, 1), std_skills.reshape(-1, 1)], axis=1
+        [gibbs_skill_means.reshape(-1, 1), gibbs_skill_stds.reshape(-1, 1)],
+        axis=1
     ))
     # Do EP inference
-    ep_skill_means, ep_skill_stds = ep_rank(
+    ep_skill_means_history, ep_skill_stds_history = ep_rank(
         games, num_players, num_steps=6
     )
     print("EP results:\n", np.concatenate([
-        ep_skill_means[:, -1].reshape(-1, 1),
-        ep_skill_stds[:, -1].reshape(-1, 1)
+        ep_skill_means_history[:, -1].reshape(-1, 1),
+        ep_skill_stds_history[:, -1].reshape(-1, 1)
     ], axis=1))
-    # print("EP mean history:\n", skill_means_history)
-    # print(skill_means_history[:, 1:] - skill_means_history[:, :-1])
-    print("EP skills table:\n", ep_skill_table(
-        ep_skill_means[:, -1], ep_skill_stds[:, -1]
+    # Compute EP skill tables
+    print("EP skills table:\n", marginal_skill_table(
+        ep_skill_means_history[:, -1], ep_skill_stds_history[:, -1]
     ))
-    print("EP performance table:\n", ep_performance_table(
-        ep_skill_means[:, -1], ep_skill_stds[:, -1]
+    print("EP performance table:\n", marginal_performance_table(
+        ep_skill_means_history[:, -1], ep_skill_stds_history[:, -1]
     ))
-    
+    # Compute Gibbs skill tables
+    print("Gibbs marginal skills table:\n", marginal_skill_table(
+        gibbs_skill_means, gibbs_skill_stds
+    ))
+    print("Gibbs joint skills table:\n", joint_skill_table(
+        gibbs_skill_samples
+    ))
+    # Rank players
+    empirical_probabilities, sorted_inds = empirical_rank(games, num_players)
+    print(empirical_probabilities)
+    print(sorted_inds)
+    print(skill_rank(gibbs_skill_means))
+    print(skill_rank(ep_skill_means_history[:, -1]))
 
 
-    
+
 # games = np.array([
 #     [0, 1],
 #     [0, 2],

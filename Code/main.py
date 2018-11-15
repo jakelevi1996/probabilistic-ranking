@@ -5,13 +5,15 @@ import plotting, ranking
 from data.fileio import load
 
 def question_a(games, names, num_players, num_steps=2000):
-    skills_history, mean_skills, _ = ranking.gibbs_rank(
+    # TODO: change `num_players` to `players` list
+    skill_history, skill_means, skill_stds = ranking.gibbs_rank(
         games, num_players, num_steps
     )
-    plotting.plot_gibbs_skills(skills_history, mean_skills, names)
+    plotting.plot_gibbs_skills(skill_history, skill_means, names)
     plotting.plot_gibbs_correlations(
-        skills_history, mean_skills, names, maxlags=15
+        skill_history, skill_means, names, maxlags=15
     )
+    return skill_history, skill_means, skill_stds
 
 def question_b(games, names, num_players, num_steps=81):
     ep_skill_means, ep_skill_stds = ranking.ep_rank(
@@ -22,23 +24,39 @@ def question_b(games, names, num_players, num_steps=81):
     )
     return ep_skill_means, ep_skill_stds
 
-def question_c(ep_skill_means, ep_skill_stds, names, players=range(4)):
+def question_c(ep_skill_means, ep_skill_stds, names, players):
     print("EP skills table:")
     print(names[players])
-    print(ranking.ep_skill_table(
-        ep_skill_means[:, -1], ep_skill_stds[:, -1], players
+    print(ranking.marginal_skill_table(
+        ep_skill_means, ep_skill_stds, players
     ))
     print("EP performance table:")
     print(names[players])
-    print(ranking.ep_performance_table(
-        ep_skill_means[:, -1], ep_skill_stds[:, -1], players
+    print(ranking.marginal_performance_table(
+        ep_skill_means, ep_skill_stds, players
     ))
 
-def question_d():
-    pass
+def question_d(
+    gibbs_skill_samples, gibbs_skill_means, gibbs_skill_stds, names, players
+):
+    print("Gibbs marginal skills table:")
+    print(names[players])
+    print(ranking.marginal_skill_table(
+        gibbs_skill_means, gibbs_skill_stds, players
+    ))
+    print("Gibbs joint skills table:")
+    print(names[players])
+    print(ranking.joint_skill_table(gibbs_skill_samples, players))
 
-def question_e():
-    pass
+def question_e(games, num_players, gibbs_skill_means, ep_skill_means):
+    empirical_probabilities, empirical_sort = ranking.empirical_rank(
+        games, num_players
+    )
+    gibbs_sort = ranking.skill_rank(gibbs_skill_means)
+    ep_sort = ranking.skill_rank(ep_skill_means)
+    print(empirical_sort)
+    print(gibbs_sort)
+    print(ep_sort)
 
 def save_example_skills_history(
     num_steps=2000, random_seed=0,
@@ -56,11 +74,28 @@ def save_example_skills_history(
 
 if __name__ == "__main__":
     np.random.seed(0)
+    top_4_players = [15, 0, 4, 10]
     games, names = load()
     num_players = names.size
     # save_example_skills_history()
-    # question_a(games, names, num_players, num_steps=2000)
-    ep_skill_means, ep_skill_stds = question_b(
-        games, names, num_players, num_steps=81
+    gibbs_skill_samples, gibbs_skill_means, gibbs_skill_stds = question_a(
+        games, names, num_players, num_steps=2000
     )
-    question_c(ep_skill_means, ep_skill_stds, names)
+    ep_skill_means_history, ep_skill_stds_history = question_b(
+        games, names, num_players, num_steps=100
+    )
+    ep_skill_means = ep_skill_means_history[:, -1]
+    ep_skill_stds = ep_skill_stds_history[:, -1]
+    question_c(
+        ep_skill_means, ep_skill_stds,
+        names, top_4_players
+    )
+    question_d(
+        gibbs_skill_samples, gibbs_skill_means, gibbs_skill_stds,
+        names, [0, 15]
+    )
+    question_d(
+        gibbs_skill_samples, gibbs_skill_means, gibbs_skill_stds,
+        names, top_4_players
+    )
+    question_e(games, num_players, gibbs_skill_means, ep_skill_means)
