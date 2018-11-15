@@ -4,7 +4,7 @@ from time import time
 import plotting, ranking
 from data.fileio import load
 
-def question_a(games, names, num_players, num_steps):
+def question_a(games, names, num_players, num_steps=2000):
     skills_history, mean_skills, _ = ranking.gibbs_rank(
         games, num_players, num_steps
     )
@@ -13,16 +13,26 @@ def question_a(games, names, num_players, num_steps):
         skills_history, mean_skills, names, maxlags=15
     )
 
-def question_b(games, names, num_players, num_steps):
-    skill_means_history, skill_stds_history = ranking.ep_rank(
+def question_b(games, names, num_players, num_steps=81):
+    ep_skill_means, ep_skill_stds = ranking.ep_rank(
         games, num_players, num_steps
     )
     plotting.plot_ep_skills(
-        skill_means_history, skill_stds_history, names, 6, plot_std=True
+        ep_skill_means, ep_skill_stds, names, 6, plot_std=True
     )
+    return ep_skill_means, ep_skill_stds
 
-def question_c():
-    pass
+def question_c(ep_skill_means, ep_skill_stds, names, players=range(4)):
+    print("EP skills table:")
+    print(names[players])
+    print(ranking.ep_skill_table(
+        ep_skill_means[:, -1], ep_skill_stds[:, -1], players
+    ))
+    print("EP performance table:")
+    print(names[players])
+    print(ranking.ep_performance_table(
+        ep_skill_means[:, -1], ep_skill_stds[:, -1], players
+    ))
 
 def question_d():
     pass
@@ -49,5 +59,8 @@ if __name__ == "__main__":
     games, names = load()
     num_players = names.size
     # save_example_skills_history()
-    question_a(games, names, num_players, num_steps=2000)
-    # question_b(games, names, num_players, num_steps=81)
+    # question_a(games, names, num_players, num_steps=2000)
+    ep_skill_means, ep_skill_stds = question_b(
+        games, names, num_players, num_steps=81
+    )
+    question_c(ep_skill_means, ep_skill_stds, names)

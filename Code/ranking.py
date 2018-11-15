@@ -61,6 +61,9 @@ def compute_marginal_skills(
     prior_skills_variance, games, num_players,
     game_to_skill_means, game_to_skill_precs
 ):
+    """This code function gets called in two different places, so best to put
+    it in a function
+    """
     skill_precs = 1.0 / prior_skills_variance + (np.where(
         games.reshape(-1, 1) == np.arange(num_players),
         game_to_skill_precs.reshape(-1, 1), 0
@@ -88,7 +91,7 @@ def ep_rank(games, num_players, num_steps=20, print_every=10):
     # Step 0: nitialise game to skill messages to uninformative prior:
     game_to_skill_means = np.zeros(games.shape)
     game_to_skill_precs = np.zeros(games.shape)
-    # Step 1: compute marginal skills per player:
+    # Step 1: compute initial marginal skills per player:
     skill_means, skill_precs = compute_marginal_skills(
         prior_skills_variance, games, num_players,
         game_to_skill_means, game_to_skill_precs
@@ -142,58 +145,125 @@ def ep_rank(games, num_players, num_steps=20, print_every=10):
     
     return skill_means_history, skill_stds_history
 
+def relative_gaussian_probability(mu_1, var_1, mu_2, var_2, noise_var=0):
+    return norm.cdf((mu_1 - mu_2) / (var_1 + var_2 + noise_var))
 
+def relative_empirical_probability():
+    pass
+
+def ep_skill_table(final_mean_skills, final_std_skills, players=range(4)):
+    """Return table of probabilities of having a higher skill, according to EP
+    predictions.
+
+    Rows of the table refer to Player 1
+    Column refer to Player 2
+    Value in the table refers to probability that Player 1 has a higher skill
+    than Player 2 (returned as an upper-triangular matrix with no diagonal)
+    """
+    table = np.zeros([len(players) - 1, len(players)])
+    for i in range(table.shape[0]):
+        for j in range(i + 1, table.shape[1]):
+            table[i, j] = relative_gaussian_probability(
+                final_mean_skills[players[i]], final_std_skills[players[i]],
+                final_mean_skills[players[j]], final_std_skills[players[j]],
+            )
+    return table
+
+def ep_performance_table(
+    final_mean_skills, final_std_skills, players=range(4)
+):
+    """Return table of probabilities of having a higher skill, according to EP
+    predictions.
+
+    Rows of the table refer to Player 1
+    Column refer to Player 2
+    Value in the table refers to probability that Player 1 has a higher skill
+    than Player 2 (returned as an upper-triangular matrix with no diagonal)
+
+    TODO: This code is really similar to the `ep_skill_table` function; should
+    probably have some better form of code reuse
+    """
+    table = np.zeros([len(players) - 1, len(players)])
+    for i in range(table.shape[0]):
+        for j in range(i + 1, table.shape[1]):
+            table[i, j] = relative_gaussian_probability(
+                final_mean_skills[players[i]], final_std_skills[players[i]],
+                final_mean_skills[players[j]], final_std_skills[players[j]],
+                noise_var=1.0
+            )
+    return table
+
+def gibbs_marginal_skill_table():
+    pass
+
+def gibbs_joint_skill_table():
+    pass
 
 if __name__ == "__main__":
-    np.random.seed(27)
-    
-    # games = np.array([
-    #     [0, 1],
-    #     [0, 2],
-    #     [2, 0],
-    #     [1, 2],
-    #     [1, 2],
-    #     [4, 3],
-    #     [4, 3],
-    #     [1, 4],
-    #     [1, 3]
-    # ])
+    # np.random.seed(27)
     
     games = np.array([
         [0, 1],
         [1, 2],
         [2, 3],
-        # [2, 3],
-        # [2, 3],
-        # [2, 3],
-        # [2, 3],
-        # [2, 3],
         [3, 4],
         [4, 5],
         [0, 2],
         [0, 3],
         [0, 4],
         [0, 4],
+        # [2, 3],
+        # [2, 3],
+        # [2, 3],
+        # [2, 3],
+        # [2, 3],
+        # [0, 17]
     ])
     num_players = games.max() +1
 
-    # num_steps = 2000
-    # print("Ranking {} games between {} players".format(
-    #     games.shape[0], num_players
-    # ))
-    # start_time = time()
-    # skills_history, mean_skills, std_skills = gibbs_rank(
-    #     games, num_players, num_steps
-    # )
-    # print("Time taken for {} steps = {:.3f} s".format(
-    #     num_steps, time() - start_time
-    # ))
-    # print(np.concatenate(
-    #     [mean_skills.reshape(-1, 1), std_skills.reshape(-1, 1)], axis=1
-    # ))
-    skill_means_history, skill_stds_history = ep_rank(
+    num_steps = 200
+    print("Ranking {} games between {} players".format(
+        games.shape[0], num_players
+    ))
+    start_time = time()
+    # Do Gibbs sampling
+    skills_history, mean_skills, std_skills = gibbs_rank(
+        games, num_players, num_steps
+    )
+    print("Time taken for {} steps = {:.3f} s".format(
+        num_steps, time() - start_time
+    ))
+    print("Gibbs results:\n", np.concatenate(
+        [mean_skills.reshape(-1, 1), std_skills.reshape(-1, 1)], axis=1
+    ))
+    # Do EP inference
+    ep_skill_means, ep_skill_stds = ep_rank(
         games, num_players, num_steps=6
     )
-    print(skill_means_history)
-    print(skill_stds_history)
-    print(skill_means_history[:, 1:] - skill_means_history[:, :-1])
+    print("EP results:\n", np.concatenate([
+        ep_skill_means[:, -1].reshape(-1, 1),
+        ep_skill_stds[:, -1].reshape(-1, 1)
+    ], axis=1))
+    # print("EP mean history:\n", skill_means_history)
+    # print(skill_means_history[:, 1:] - skill_means_history[:, :-1])
+    print("EP skills table:\n", ep_skill_table(
+        ep_skill_means[:, -1], ep_skill_stds[:, -1]
+    ))
+    print("EP performance table:\n", ep_performance_table(
+        ep_skill_means[:, -1], ep_skill_stds[:, -1]
+    ))
+    
+
+
+    
+# games = np.array([
+#     [0, 1],
+#     [0, 2],
+#     [2, 0],
+#     [1, 2],
+#     [1, 2],
+#     [4, 3],
+#     [4, 3],
+#     [1, 4],
+#     [1, 3]
+# ])
