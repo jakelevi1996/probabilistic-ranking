@@ -80,19 +80,50 @@ def plot_ep_skills_cyclic_colours(
     # colours = iter(plt.cm.bwr(np.linspace(0, 1, num_players)))
     # for player in range(num_players):
     #     plt.plot(skill_means_history[player], c=next(colours))
-    # plt.gca().set_prop_cycle(None)
-    # for player in range(num_players):
-    #     plt.fill_between(
-    #         range(skill_means_history.shape[1]),
-    #         (skill_means_history[player] + 2.0*skill_stds_history[player]),
-    #         (skill_means_history[player] - 2.0*skill_stds_history[player]),
-    #         alpha=0.2
-    #     )
     plt.grid(True)
     plt.legend(["{} ({})".format(names[i], i+1) for i in range(num_players)])
     plt.xlabel("EP iteration")
     plt.ylabel("Skill")
     plt.title("Tennis player skills found using EP ranking")
+    plt.savefig(filename)
+    plt.close()
+
+def scale_array(array, upper=1.0, lower=0.0):
+    return lower + (upper - lower) * (
+        (array - min(array)) / (max(array) - min(array))
+    )
+
+def plot_rank_bars(
+    empirical_skills, gibbs_skill_means, ep_skill_means, gibbs_sort,
+    names, num_players, filename=DEFAULT_FILENAME, figsize=[16, 9], alpha=0.5
+):
+    plt.figure(figsize=figsize)
+    for skill in [empirical_skills, gibbs_skill_means, ep_skill_means]:
+        plt.barh(
+            range(num_players), scale_array(skill[gibbs_sort]),
+            height=1, tick_label=names[gibbs_sort], alpha=alpha
+        )
+    plt.gca().xaxis.grid(True)
+    plt.xlabel("Normalised skill")
+    plt.ylabel("Player name")
+    plt.title("Normalised skills for each player")
+    plt.legend(["Empirical skills", "Gibbs skills", "EP skills"])
+    plt.yticks(fontsize=5)
+    plt.savefig(filename, dpi=200)
+    plt.close()
+
+def plot_rank_lines(
+    empirical_skills, gibbs_skill_means, ep_skill_means, gibbs_sort,
+    names, num_players, filename=DEFAULT_FILENAME, figsize=[16, 9]
+):
+    plt.figure(figsize=figsize)
+    for skill in [empirical_skills, gibbs_skill_means, ep_skill_means]:
+        plt.plot(range(num_players, 0, -1), scale_array(skill[gibbs_sort]))
+    plt.grid(True)
+    plt.xlabel("Player rank (EP)")
+    plt.ylabel("Normalised skill")
+    plt.title("Normalised skills for each player as a function of Gibbs rank")
+    plt.legend(["Empirical skills", "Gibbs skills", "EP skills"])
     plt.savefig(filename)
     plt.close()
 
@@ -108,3 +139,5 @@ if __name__ == "__main__":
         skills_history, mean_skills, names, xlim=xlim, fmt=fmt, num_players=10
     )
     # plot_gibbs_correlations(skills_history, mean_skills, names, maxlags=15)
+    print(scale_array(np.array([3, 6, 7])))
+

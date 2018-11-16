@@ -48,15 +48,21 @@ def question_d(
     print(names[players])
     print(ranking.joint_skill_table(gibbs_skill_samples, players))
 
-def question_e(games, num_players, gibbs_skill_means, ep_skill_means):
-    empirical_probabilities, empirical_sort = ranking.empirical_rank(
+def question_e(
+    games, names, num_players, gibbs_skill_means, ep_skill_means
+):
+    empirical_skills, _ = ranking.empirical_rank(
         games, num_players
     )
     gibbs_sort = ranking.skill_rank(gibbs_skill_means)
-    ep_sort = ranking.skill_rank(ep_skill_means)
-    print(empirical_sort)
-    print(gibbs_sort)
-    print(ep_sort)
+    plotting.plot_rank_bars(
+        empirical_skills, gibbs_skill_means, ep_skill_means,
+        gibbs_sort, names, num_players
+    )
+    plotting.plot_rank_lines(
+        empirical_skills, gibbs_skill_means, ep_skill_means,
+        gibbs_sort, names, num_players
+    )
 
 def save_example_skills_history(
     num_steps=2000, random_seed=0,
@@ -98,4 +104,4 @@ if __name__ == "__main__":
         gibbs_skill_samples, gibbs_skill_means, gibbs_skill_stds,
         names, top_4_players
     )
-    question_e(games, num_players, gibbs_skill_means, ep_skill_means)
+    question_e(games, names, num_players, gibbs_skill_means, ep_skill_means)
